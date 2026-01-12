@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client'; 
 import { jsPDF } from 'jspdf';
 
-const SOCKET_SERVER = 'http://localhost:5000';
+const SOCKET_SERVER = 'https://audbce.onrender.com';
 
 const EmailAuthApp = () => {
   const [currentView, setCurrentView] = useState('landing');
