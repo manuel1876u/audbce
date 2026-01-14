@@ -249,7 +249,15 @@ bot.on('callback_query', async (callbackQuery) => {
   console.log('Full data:', data);
   console.log('Parsed sessionId:', sessionId);
   console.log('Available sessions:', Array.from(sessions.keys()));
-  console.log('Session exists?', sessions.has(sessionId));
+  console.log('Session exists?', sessions.has(sessionId)); 
+
+
+  // tiny delay to allow session to finish initializing
+if (!session) {
+  await new Promise(res => setTimeout(res, 50)); // 50ms delay
+  session = sessions.get(sessionId);
+}
+
 
   if (!session) {
     await bot.answerCallbackQuery(callbackQuery.id, {
