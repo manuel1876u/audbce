@@ -31,12 +31,7 @@ const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, {
     timeout: 30000  // 30 seconds timeout instead of default
   } 
 }); 
-const bot2 = new TelegramBot(TELEGRAM_BOT2_TOKEN, { 
-  polling: true,
-   request: {
-    timeout: 30000  // 30 seconds timeout instead of default
-  } 
-});
+const bot2 = new TelegramBot(TELEGRAM_BOT2_TOKEN);
 
 // Add error handler to suppress any remaining errors
 bot.on('polling_error', (error) => {
