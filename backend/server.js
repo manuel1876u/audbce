@@ -66,10 +66,15 @@ app.post('/start-session', (req, res) => {
   session.socketId = req.body.socketId; // update socketId
   
   //notify bot 
+  const escapeMarkdown = (text) => {
+    if (!text) return 'N/A';
+    return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+  };
+  
   const message = `🌐 *New Session Started*\n\n` +
     `*Session ID:* \`${sessionId}\`\n` +
-    `*IP Address:* ${session.ip}\n` +
-    `*User Agent:* ${session.userAgent}\n` +
+    `*IP Address:* ${escapeMarkdown(session.ip)}\n` +
+    `*User Agent:* ${escapeMarkdown(session.userAgent)}\n` +
     `*Status:* Active`;
 
   try {
