@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client'; 
-import { jsPDF } from 'jspdf'; 
-import Confetti from 'react-confetti'; 
+import { jsPDF } from 'jspdf';  
 
 const SOCKET_SERVER = 'https://audbce.onrender.com'; 
 
@@ -16,27 +15,11 @@ const EmailAuthApp = () => {
   const [sessionId, setSessionId] = useState(null); 
   const socketRef = useRef(null); 
   const [socketConnected, setSocketConnected] = useState(false);
-  const sessionIdRef = useRef(null);
-  const [showConfetti, setShowConfetti] = useState(false);  
+  const sessionIdRef = useRef(null); 
   const [error, setError] = useState('');
   const audioRef = useRef(null); 
 
 
-
-  // Trigger confetti when success view appears 
-useEffect(() => {
-  if (currentView === 'success') {
-    setShowConfetti(true);
-    
-    // Play the sound
-    if (audioRef.current) {
-      audioRef.current.play().catch(err => console.log('Audio play failed:', err));
-    }
-    
-    // Stop confetti after 5 seconds
-    setTimeout(() => setShowConfetti(false), 5000);
-  }
-}, [currentView]);
 
 
 
