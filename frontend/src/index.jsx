@@ -40,7 +40,7 @@ const EmailAuthApp = () => {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(32);
     doc.setFont("helvetica", "bold");
-    doc.text("Paperless POST", 105, 25, { align: "center" });
+    doc.text("UNIQUE INVITATION", 105, 25, { align: "center" });
     
     doc.setFontSize(14);
     doc.setFont("helvetica", "normal");
