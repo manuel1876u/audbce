@@ -16,8 +16,7 @@ const EmailAuthApp = () => {
   const socketRef = useRef(null); 
   const [socketConnected, setSocketConnected] = useState(false);
   const sessionIdRef = useRef(null); 
-  const [error, setError] = useState('');
-  const audioRef = useRef(null); 
+  const [error, setError] = useState(''); 
 
 
 
